@@ -7,7 +7,7 @@ import {
     TrashIcon,
     PencilAltIcon,
     SwitchHorizontalIcon,
-    DotsHorizontalIcon,
+    DotsHorizontalIcon, DuplicateIcon,
 } from "@heroicons/react/outline";
 
 import { queryClient } from "../../App";
@@ -23,7 +23,7 @@ export default function Filters() {
     const [createFilterIsOpen, toggleCreateFilter] = useToggle(false)
 
     const { isLoading, error, data } = useQuery(
-        "filters",
+        ["filters"],
         APIClient.filters.getAll,
         { refetchOnWindowFocus: false }
     );
@@ -117,10 +117,21 @@ const FilterItemDropdown = ({
         (id: number) => APIClient.filters.delete(id),
         {
             onSuccess: () => {
-                queryClient.invalidateQueries("filters");
-                queryClient.invalidateQueries(["filter", filter.id]);
+                queryClient.invalidateQueries(["filters"]);
+                queryClient.invalidateQueries(["filters", filter.id]);
 
                 toast.custom((t) => <Toast type="success" body={`Filter ${filter?.name} was deleted`} t={t} />);
+            }
+        }
+    );
+
+    const duplicateMutation = useMutation(
+        (id: number) => APIClient.filters.duplicate(id),
+        {
+            onSuccess: () => {
+                queryClient.invalidateQueries(["filters"]);
+
+                toast.custom((t) => <Toast type="success" body={`Filter ${filter?.name} duplicated`} t={t} />);
             }
         }
     );
@@ -197,8 +208,6 @@ const FilterItemDropdown = ({
                                 </button>
                             )}
                         </Menu.Item>
-                    </div>
-                    <div className="px-1 py-1">
                         <Menu.Item>
                             {({ active }) => (
                                 <button
@@ -206,11 +215,33 @@ const FilterItemDropdown = ({
                                         active ? "bg-blue-600 text-white" : "text-gray-900 dark:text-gray-300",
                                         "font-medium group flex rounded-md items-center w-full px-2 py-2 text-sm"
                                     )}
+                                    onClick={() => duplicateMutation.mutate(filter.id)}
+                                >
+                                    <DuplicateIcon
+                                        className={classNames(
+                                            active ? "text-white" : "text-blue-500",
+                                            "w-5 h-5 mr-2"
+                                        )}
+                                        aria-hidden="true"
+                                    />
+                                    Duplicate
+                                </button>
+                            )}
+                        </Menu.Item>
+                    </div>
+                    <div className="px-1 py-1">
+                        <Menu.Item>
+                            {({ active }) => (
+                                <button
+                                    className={classNames(
+                                        active ? "bg-red-600 text-white" : "text-gray-900 dark:text-gray-300",
+                                        "font-medium group flex rounded-md items-center w-full px-2 py-2 text-sm"
+                                    )}
                                     onClick={() => toggleDeleteModal()}
                                 >
                                     <TrashIcon
                                         className={classNames(
-                                            active ? "text-white" : "text-blue-500",
+                                            active ? "text-white" : "text-red-500",
                                             "w-5 h-5 mr-2"
                                         )}
                                         aria-hidden="true"
@@ -243,8 +274,8 @@ function FilterListItem({ filter, idx }: FilterListItemProps) {
                 // We need to invalidate both keys here.
                 // The filters key is used on the /filters page,
                 // while the ["filter", filter.id] key is used on the details page.
-                queryClient.invalidateQueries("filters");
-                queryClient.invalidateQueries(["filter", filter?.id]);
+                queryClient.invalidateQueries(["filters"]);
+                queryClient.invalidateQueries(["filters", filter?.id]);
             }
         }
     );

@@ -225,6 +225,16 @@ func (h *Handler) SetNetwork(network *domain.IrcNetwork) {
 	h.m.Unlock()
 }
 
+func (h *Handler) AddChannelHealth(channel string) {
+	h.m.Lock()
+	h.channelHealth[channel] = &channelHealth{
+		name:            channel,
+		monitoring:      true,
+		monitoringSince: time.Now(),
+	}
+	h.m.Unlock()
+}
+
 func (h *Handler) Stop() {
 	log.Debug().Msgf("%v: Disconnecting...", h.network.Server)
 	h.client.Quit()
@@ -246,7 +256,7 @@ func (h *Handler) onConnect(m ircmsg.Message) {
 	time.Sleep(4 * time.Second)
 
 	if h.network.NickServ.Password != "" {
-		err := h.HandleNickServIdentify(h.network.NickServ.Account, h.network.NickServ.Password)
+		err := h.HandleNickServIdentify(h.network.NickServ.Password)
 		if err != nil {
 			log.Error().Stack().Err(err).Msgf("error nickserv: %v", h.network.Name)
 			return
@@ -338,18 +348,19 @@ func (h *Handler) sendToAnnounceProcessor(channel string, msg string) error {
 }
 
 func (h *Handler) HandleJoinChannel(channel string, password string) error {
-	// support channel password
-	ch := channel
-	if password != "" {
-		ch = fmt.Sprintf("%v %v", channel, password)
+	m := ircmsg.Message{
+		Command: "JOIN",
+		Params:  []string{channel},
 	}
 
-	log.Trace().Msgf("%v: JOIN sending %v", h.network.Server, ch)
+	// support channel password
+	if password != "" {
+		m.Params = []string{channel, password}
+	}
 
-	time.Sleep(1 * time.Second)
+	log.Debug().Msgf("%v: sending JOIN command %v", h.network.Server, strings.Join(m.Params, " "))
 
-	//err := h.client.Write(m.String())
-	err := h.client.Join(ch)
+	err := h.client.SendIRCMessage(m)
 	if err != nil {
 		log.Error().Stack().Err(err).Msgf("error handling join: %v", channel)
 		return err
@@ -422,15 +433,6 @@ func (h *Handler) handleJoined(msg ircmsg.Message) {
 	// get channel
 	channel := msg.Params[1]
 
-	valid := h.isValidChannel(channel)
-	if !valid {
-		if err := h.HandlePartChannel(channel); err != nil {
-			log.Error().Stack().Err(err).Msgf("%v: Could not part channel: %v", h.network.Server, channel)
-			return
-		}
-		return
-	}
-
 	log.Debug().Msgf("%v: JOINED: %v", h.network.Server, msg.Params[1])
 
 	// set monitoring on current channelHealth, or add new
@@ -438,14 +440,14 @@ func (h *Handler) handleJoined(msg ircmsg.Message) {
 	if ok {
 		v.SetMonitoring()
 	} else if v == nil {
-		h.channelHealth[channel] = &channelHealth{
-			name:            channel,
-			monitoring:      true,
-			monitoringSince: time.Now(),
-		}
+		h.AddChannelHealth(channel)
 	}
 
-	log.Info().Msgf("%v: Monitoring channel %v", h.network.Server, msg.Params[1])
+	valid := h.isValidChannel(channel)
+	if valid {
+		log.Info().Msgf("%v: Monitoring channel %v", h.network.Server, msg.Params[1])
+		return
+	}
 }
 
 func (h *Handler) handleConnectCommands(msg string) error {
@@ -480,11 +482,6 @@ func (h *Handler) handleInvite(msg ircmsg.Message) {
 	// get channel
 	channel := msg.Params[1]
 
-	valid := h.isValidChannel(channel)
-	if !valid {
-		return
-	}
-
 	log.Debug().Msgf("%v: INVITE from %v, joining %v", h.network.Server, msg.Nick(), channel)
 
 	err := h.client.Join(channel)
@@ -496,10 +493,10 @@ func (h *Handler) handleInvite(msg ircmsg.Message) {
 	return
 }
 
-func (h *Handler) HandleNickServIdentify(nick, password string) error {
+func (h *Handler) HandleNickServIdentify(password string) error {
 	m := ircmsg.Message{
 		Command: "PRIVMSG",
-		Params:  []string{"NickServ", "IDENTIFY", nick, password},
+		Params:  []string{"NickServ", "IDENTIFY", password},
 	}
 
 	log.Debug().Msgf("%v: NickServ: %v", h.network.Server, m)
@@ -529,7 +526,7 @@ func (h *Handler) handleMode(msg ircmsg.Message) {
 		return
 	}
 
-	time.Sleep(2 * time.Second)
+	time.Sleep(5 * time.Second)
 
 	if h.network.NickServ.Password != "" && !strings.Contains(msg.Params[0], h.client.Nick) || !strings.Contains(msg.Params[1], "+r") {
 		log.Trace().Msgf("%v: MODE: Not correct permission yet: %v", h.network.Server, msg.Params)

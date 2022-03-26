@@ -205,7 +205,7 @@ func (s *service) checkIfNetworkRestartNeeded(network *domain.IrcNetwork) error 
 			} else if handler.NickServ.Password != network.NickServ.Password {
 				log.Debug().Msg("nickserv: changing password")
 
-				err := existingHandler.HandleNickServIdentify(network.NickServ.Account, network.NickServ.Password)
+				err := existingHandler.HandleNickServIdentify(network.NickServ.Password)
 				if err != nil {
 					log.Error().Stack().Err(err).Msgf("failed to identify with nickserv %q", network.NickServ.Account)
 				}
@@ -396,6 +396,7 @@ func (s *service) GetNetworksWithHealth(ctx context.Context) ([]domain.IrcNetwor
 			InviteCommand: n.InviteCommand,
 			NickServ:      n.NickServ,
 			Connected:     false,
+			Channels:      []domain.ChannelWithHealth{},
 		}
 
 		handler, ok := s.handlers[handlerKey{n.Server, n.NickServ.Account}]

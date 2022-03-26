@@ -135,7 +135,7 @@ export default function FilterDetails() {
     const { filterId } = useParams<{ filterId: string }>();
 
     const { isLoading, data: filter } = useQuery(
-        ["filter", +filterId],
+        ["filters", filterId],
         () => APIClient.filters.getByID(parseInt(filterId)),
         {
             retry: false,
@@ -151,7 +151,8 @@ export default function FilterDetails() {
                 toast.custom((t) => (
                   <Toast type="success" body={`${currentFilter.name} was updated successfully`} t={t} />
                 ));
-                queryClient.invalidateQueries(["filter", currentFilter.id]);
+                queryClient.refetchQueries(["filters"]);
+                // queryClient.invalidateQueries(["filters", currentFilter.id]);
             }
         }
     );
@@ -163,7 +164,7 @@ export default function FilterDetails() {
             ));
 
             // Invalidate filters just in case, most likely not necessary but can't hurt.
-            queryClient.invalidateQueries("filters");
+            queryClient.invalidateQueries(["filters"]);
 
             // redirect
             history.push("/filters")
@@ -178,7 +179,16 @@ export default function FilterDetails() {
         return null
     }
 
-    const handleSubmit = (data: any) => {
+    const handleSubmit = (data: Filter) => {
+        // force set method and type on webhook actions
+        // TODO add options for these
+        data.actions.forEach((a: Action) => {
+            if (a.type === "WEBHOOK") {
+                a.webhook_method = "POST"
+                a.webhook_type = "JSON"
+            }
+        })
+
         updateMutation.mutate(data)
     }
 
@@ -245,6 +255,7 @@ export default function FilterDetails() {
                                         min_size: filter.min_size,
                                         max_size: filter.max_size,
                                         delay: filter.delay,
+                                        priority: filter.priority,
                                         shows: filter.shows,
                                         years: filter.years,
                                         resolutions: filter.resolutions || [],
@@ -267,8 +278,6 @@ export default function FilterDetails() {
                                         except_uploaders: filter.except_uploaders,
                                         freeleech: filter.freeleech,
                                         freeleech_percent: filter.freeleech_percent,
-                                        indexers: filter.indexers || [],
-                                        actions: filter.actions || [],
                                         formats: filter.formats || [],
                                         quality: filter.quality || [],
                                         media: filter.media || [],
@@ -279,6 +288,8 @@ export default function FilterDetails() {
                                         perfect_flac: filter.perfect_flac,
                                         artists: filter.artists,
                                         albums: filter.albums,
+                                        indexers: filter.indexers || [],
+                                        actions: filter.actions || [],
                                     } as Filter}
                                     onSubmit={handleSubmit}
                                 >
@@ -324,7 +335,7 @@ export default function FilterDetails() {
 
 function General() {
     const { isLoading, data: indexers } = useQuery(
-        ["filter", "indexer_list"],
+        ["filters", "indexer_list"],
         APIClient.indexers.getOptions,
         { refetchOnWindowFocus: false }
     );
@@ -359,6 +370,7 @@ function General() {
                     <TextField name="min_size" label="Min size" columns={6} placeholder="" />
                     <TextField name="max_size" label="Max size" columns={6} placeholder="" />
                     <NumberField name="delay" label="Delay" placeholder="" />
+                    <NumberField name="priority" label="Priority" placeholder="" />
                 </div>
             </div>
 
@@ -601,7 +613,7 @@ interface FilterActionsProps {
 
 function FilterActions({ filter, values }: FilterActionsProps) {
     const { data } = useQuery(
-        ["filter", "download_clients"],
+        ["filters", "download_clients"],
         APIClient.download_clients.getAll,
         { refetchOnWindowFocus: false }
     );
@@ -622,6 +634,11 @@ function FilterActions({ filter, values }: FilterActionsProps) {
         limit_upload_speed: 0,
         limit_download_speed: 0,
         filter_id: filter.id,
+        webhook_host: "",
+        webhook_type: "",
+        webhook_method: "",
+        webhook_data: "",
+        webhook_headers: [],
         //   client_id: 0,
     }
 
@@ -714,6 +731,23 @@ function FilterActionsItem({ action, clients, idx, remove }: FilterActionsItemPr
                             label="Watch folder"
                             columns={6}
                             placeholder="Watch directory eg. /home/user/rwatch"
+                        />
+                    </div>
+                );
+            case "WEBHOOK":
+                return (
+                    <div className="mt-6 grid grid-cols-12 gap-6">
+                        <TextField
+                            name={`actions.${idx}.webhook_host`}
+                            label="Host"
+                            columns={6}
+                            placeholder="Host eg. http://localhost/webhook"
+                        />
+                        <TextField
+                            name={`actions.${idx}.webhook_data`}
+                            label="Data (json)"
+                            columns={6}
+                            placeholder={`Request data: { "key": "value" }`}
                         />
                     </div>
                 );
